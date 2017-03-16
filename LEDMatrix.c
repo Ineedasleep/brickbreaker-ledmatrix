@@ -9,7 +9,8 @@
 
 // LED Matrix Global Variables
 unsigned char board[8][8] = { { 0 } };
-unsigned char Level = 1;
+unsigned char currentLevel = 1;
+signed char Bosslife = 0; // Can dip into negative
 unsigned char LED[8] = {0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80};
 unsigned char blue[8] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 unsigned char green[8] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
@@ -22,7 +23,9 @@ typedef struct _coordinate {
 } coordinate;
 
 coordinate PaddlePos[3];
+coordinate BossPos[4];
 coordinate BallPos;
+coordinate BallPrev;
 
 // Generates bricks according to lvl number
 // Lvl 1 is basic, top three rows are bricks
@@ -38,9 +41,17 @@ void GenerateLevel(unsigned char lvlNum) {
 			}
 		}
 	} else if (lvlNum == 2) {
-
+		board[0][7] = 'G'; board[0][6] = 'G'; board[0][3] = 'G'; board[0][2] = 'G';
+		board[1][5] = 'G'; board[1][4] = 'G'; board[1][1] = 'G'; board[1][0] = 'G';
+		board[2][7] = 'G'; board[2][6] = 'G'; board[2][3] = 'G'; board[2][2] = 'G';
+		board[3][5] = 'G'; board[3][4] = 'G'; board[3][1] = 'G'; board[3][0] = 'G';
 	} else if (lvlNum == 3) {
-
+		for (i = 0; i < 8; i++) {
+			board[1][i] = 'G';
+		}
+		for (i = 0; i < 8; i++) {
+			board[3][i] = 'G';
+		}
 	}
 }
 
@@ -75,28 +86,47 @@ void WritePaddle() {
 	}
 }
 
+void UpdateBall() {
+	board[BallPos.ypos][BallPos.xpos] = 'A';
+	board[BallPrev.ypos][BallPrev.xpos] = '0';
+}
+
+void UpdatePrev() {
+	BallPrev.ypos = BallPos.ypos;
+	BallPrev.xpos = BallPos.xpos;
+}
 
 // Initiates ball object on matrix
 void GenerateBall() {
-	// Clear ball position on the screen(?)
+	// Clear ball position on the screen
+	if (board[BallPos.ypos][BallPos.xpos] != 'G' && board[BallPos.ypos][BallPos.xpos] != 'P')
+		board[BallPos.ypos][BallPos.xpos] = '0';
 
 	// Generate ball at starting position
-	BallPos.xpos = 6;
-	BallPos.ypos = 4;
+	BallPos.xpos = 4;
+	BallPos.ypos = 6;
 	board[6][4] = 'A';
 }
 
-
-/*
-// Causes ball to bounce at 45 deg angle relative to its previous position
-void Bounce(unsigned char bounceFlag, unsigned char xPos, unsigned char yPos) {
-
-}*/
-
+// Breaks a single (2x1) brick
+void Break(unsigned char xpos, unsigned char ypos) {
+	board[ypos][xpos] = '0';
+	if (xpos == 0 || xpos == 2 || xpos == 4 || xpos == 6) {
+		board[ypos][xpos+1] = '0';
+	} else if (xpos == 1 || xpos == 3 || xpos == 5 || xpos == 7) {
+		board[ypos][xpos-1] = '0';
+	}
+}
 
 // Generates boss object for level 3 of the game
-void GenerateBoss(coordinate BossPos) {
-
+void GenerateBoss() {
+	Bosslife = 3;
+	int i;
+	for (i = 0; i <= 3; i++) {
+		BossPos[i].xpos = i+1;
+		BossPos[i].ypos = 0;
+		board[0][i+1] = 'S';
+	}
 }
 
 
@@ -105,7 +135,7 @@ void ReadGreen() {
 	int i, j;
 	for (i = 0; i < 8; i++) {
 		for (j = 0; j < 8; j++) {
-			if (board[i][j] == 'G' || board[i][j] == 'A')
+			if (board[i][j] == 'G' || board[i][j] == 'A') // Brick or ball
 				green[i] &= SetBit(green[i], j, 0);
 			else
 				green[i] |= SetBit(green[i], j, 1);
@@ -117,7 +147,7 @@ void ReadBlue() {
 	int i, j;
 	for (i = 0; i < 8; i++) {
 		for (j = 0; j < 8; j++) {
-			if (board[i][j] == 'P' || board[i][j] == 'S')
+			if (board[i][j] == 'P' || board[i][j] == 'S') // Paddle or boss
 				blue[i] &= SetBit(blue[i], j, 0);
 			else
 				blue[i] |= SetBit(blue[i], j, 1);
@@ -125,90 +155,20 @@ void ReadBlue() {
 	}
 }
 
-/*
-// ====================
-// SM1: DEMO LED matrix
-// ====================
-enum SM1_States {sm1_display};
-int SM1_Tick(int state) {
-	// === Local Variables ===
-	static unsigned char column_val = 0x01; // sets the pattern displayed on columns
-	static unsigned char column_sel = 0x7F; // grounds column to display pattern
-	// === Transitions ===
-	switch (state) {
-		case sm1_display:
-		break;
-		default:
-		state = sm1_display;
-		break;
+unsigned char CheckWin() {
+	int i, j;
+	for (i = 0; i < 4; i++) {
+		for (j = 0; j < 8; j++) {
+			if (board[i][j] == 'G' || Bosslife != 0)
+				return 0;
+		}
 	}
-	// === Actions ===
-	switch (state) {
-		case sm1_display:   // If illuminated LED in bottom right corner
-		if (column_sel == 0xFE && column_val == 0x80) {
-			column_sel = 0x7F; // display far left column
-			column_val = 0x01; // pattern illuminates top row
-		}
-		// else if far right column was last to display (grounded)
-		else if (column_sel == 0xFE) {
-			column_sel = 0x7F; // resets display column to far left column
-			column_val = column_val << 1; // shift down illuminated LED one row
-		}
-		// else Shift displayed column one to the right
-		else {
-			column_sel = (column_sel >> 1) | 0x80;
-		}
-		break;
-		default:
-		break;
-	}
-	LED = column_val; // LED holds column pattern
-	green = 0xFF;
-	blue = column_sel; // blue selects column to display blue pattern
+	return 1;
+}
 
-	transmit_3_data(green, LED, blue);
-
-	return state;
-};
-
-enum SM2_States {sm2_display};
-int SM2_Tick(int state) {
-	// === Local Variables ===
-	static unsigned char column_val = 0x01; // sets the pattern displayed on columns
-	static unsigned char column_sel = 0x7F; // grounds column to display pattern
-	// === Transitions ===
-	switch (state) {
-		case sm2_display:
-		break;
-		default:
-		state = sm2_display;
-		break;
-	}
-	// === Actions ===
-	switch (state) {
-		case sm2_display:   // If illuminated LED in bottom right corner
-		if (column_sel == 0xFE && column_val == 0x80) {
-			column_sel = 0x7F; // display far left column
-			column_val = 0x01; // pattern illuminates top row
-		}
-		// else if far right column was last to display (grounded)
-		else if (column_sel == 0xFE) {
-			column_sel = 0x7F; // resets display column to far left column
-			column_val = column_val << 1; // shift down illuminated LED one row
-		}
-		// else Shift displayed column one to the right
-		else {
-			column_sel = (column_sel >> 1) | 0x80;
-		}
-		break;
-		default:
-		break;
-	}
-	LED = column_val; // LED holds column pattern
-	blue = 0xFF;
-	green = column_sel; // green selects column to display green pattern
-
-	transmit_3_data(green, LED, blue);
-
-	return state;
-};*/
+unsigned char CheckBossWin() {
+	if (Bosslife == 0)
+		return 1;
+	else
+		return CheckWin();
+}
