@@ -1,4 +1,3 @@
-# brickbreaker-ledmatrix
 Repo to contain code from my UCR CS120B Final Project, a Brickbreaker clone
 
 This version is version 1.0, and it currently works but is still
